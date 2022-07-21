@@ -1,22 +1,25 @@
 package com.dnero.bgps.ui.map;
 
+import static com.google.android.gms.maps.GoogleMap.OnCameraMoveStartedListener.REASON_GESTURE;
+
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.drawable.Drawable;
-import android.location.Location;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Looper;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.ImageButton;
+import android.widget.TextView;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
-import androidx.annotation.DrawableRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.core.app.ActivityCompat;
@@ -27,6 +30,7 @@ import androidx.lifecycle.ViewModelProvider;
 
 import com.dnero.bgps.R;
 import com.dnero.bgps.databinding.FragmentMapBinding;
+import com.dnero.bgps.ui.global.GlobalViewModel;
 import com.google.android.gms.location.FusedLocationProviderClient;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationRequest;
@@ -48,7 +52,7 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
 
     private GoogleMap mMap;
     private FragmentMapBinding binding;
-    private boolean locationPermissionGranted = false, initialPositionAcquired = false;
+    private boolean locationPermissionGranted = false, cameraFollowing = true;
     private FusedLocationProviderClient fusedLocationClient;
 
     @RequiresApi(api = Build.VERSION_CODES.N)
@@ -57,8 +61,14 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
         MapViewModel homeViewModel =
                 new ViewModelProvider(this).get(MapViewModel.class);
 
+        GlobalViewModel globalViewModel = new ViewModelProvider(getActivity()).get(GlobalViewModel.class);
+
         binding = FragmentMapBinding.inflate(inflater, container, false);
         View root = binding.getRoot();
+
+        TextView testView = root.findViewById(R.id.test_text_field);
+        Integer data = globalViewModel.getData();
+        testView.setText(data + "");
 
         SupportMapFragment mapFragment = (SupportMapFragment) getChildFragmentManager().findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
@@ -81,6 +91,14 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
                 Manifest.permission.ACCESS_COARSE_LOCATION
         });
 
+        ImageButton btn = root.findViewById(R.id.map_button);
+        btn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                cameraFollowing = true;
+            }
+        });
+
         return root;
     }
 
@@ -100,28 +118,41 @@ public class MapFragment extends Fragment implements OnMapReadyCallback {
                     if (locationResult != null) {
                         LatLng location = new LatLng(locationResult.getLastLocation().getLatitude(), locationResult.getLastLocation().getLongitude());
 
-                        if (!initialPositionAcquired) {
-                            CameraPosition cameraPosition = new CameraPosition.Builder()
-                                    .target(location)
-                                    .zoom(17)
-                                    .tilt(45)
-                                    .build();
-                            mMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
-                            initialPositionAcquired = true;
+                        if (cameraFollowing) {
+                            centerCamera(location);
                         }
 
-                        Marker device = mMap.addMarker(
-                                new MarkerOptions()
-                                        .position(location)
-                                        .draggable(false)
-                                        .icon(BitmapFromVector(getContext(), R.drawable.ic_map_device)));
-
+                        mMap.clear();
+                        setPersonOnMap(location);
                     }
                 }
             };
 
             fusedLocationClient.requestLocationUpdates(locationRequest, locationCallback, Looper.getMainLooper());
+
+            mMap.setOnCameraMoveStartedListener(reason -> {
+                if (reason == REASON_GESTURE) {
+                    cameraFollowing = false;
+                }
+            });
         }
+    }
+
+    public void setPersonOnMap(LatLng location) {
+        Marker device = mMap.addMarker(
+                new MarkerOptions()
+                        .position(location)
+                        .draggable(false)
+                        .icon(BitmapFromVector(getContext(), R.drawable.ic_map_device)));
+    }
+
+    public void centerCamera(LatLng location) {
+        CameraPosition cameraPosition = new CameraPosition.Builder()
+                .target(location)
+                .zoom(20)
+                .tilt(45)
+                .build();
+        mMap.moveCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
     }
 
     private BitmapDescriptor BitmapFromVector(Context context, int vectorResId) {
